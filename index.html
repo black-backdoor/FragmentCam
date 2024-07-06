@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FragmentCam</title>
+
+    <style>
+        svg,
+        video {
+            position: absolute;
+            pointer-events: none;
+        }
+
+        svg {
+            z-index: 2;
+        }
+
+        body {
+            overflow: hidden;
+        }
+    </style>
+</head>
+
+<body>
+    <video></video>
+    <svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+        <path fill="none" stroke="green" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" d="M271,74 L1015,344 M271,74 L271,74"></path>
+    </svg>
+    <div id="app">
+        <button class="clear">Clear</button>
+        <pre class="stats"></pre>
+    </div>
+    <script>
+        class SVGModifier {
+            constructor() {
+                this.moves = [];
+            }
+
+            moveTo(x, y) {
+                this.moves.push(`M ${x} ${y}`);
+                return this;
+            }
+
+            closePath() {
+                this.moves.push('Z');
+                return this;
+            }
+
+            lineTo(x, y) {
+                this.moves.push(`L ${x} ${y}`);
+                return this;
+            }
+
+            toString() {
+                return this.moves.join(' ');
+            }
+        }
+
+        // Script to manipulate the DOM
+        const stats = document.querySelector('.stats');
+        const clear = document.querySelector('.clear');
+        const video = document.querySelector('video');
+        const svg = document.querySelector('svg');
+        const path = document.querySelector('svg path');
+
+        function getScreens() {
+            return Object.entries(window.localStorage)
+                .filter(([key]) => key.startsWith('screen-'))
+                .map(([key, value]) => [key, JSON.parse(value)]);
+        }
+
+        function getScreenId() {
+            const existingScreens = Object.keys(window.localStorage)
+                .filter((key) => key.startsWith('screen-'))
+                .map((key) => parseInt(key.replace('screen-', '')))
+                .sort((a, b) => a - b);
+            return (existingScreens.slice(-1)[0] || 0) + 1;
+        }
+
+        const screenId = `screen-${getScreenId()}`;
+
+        function setScreenDetails() {
+            const windowDetails = {
+                screenX: window.screenX,
+                screenY: window.screenY,
+                screenWidth: window.screen.availWidth,
+                screenHeight: window.screen.availHeight,
+                width: window.outerWidth,
+                height: window.innerHeight,
+                updated: Date.now(),
+            };
+            window.localStorage.setItem(screenId, JSON.stringify(windowDetails));
+        }
+
+        function displayStats() {
+            if (!stats) return;
+            const existingScreens = Object.fromEntries(getScreens());
+            stats.innerHTML = JSON.stringify(existingScreens, null, ' ');
+        }
+
+        function restart() {
+            timers.forEach((timer) => window.clearInterval(timer));
+            window.localStorage.clear();
+            setTimeout(() => window.location.reload(), Math.random() * 2000);
+        }
+
+        function removeScreen() {
+            console.log(`removing screen ${screenId}`);
+            localStorage.removeItem(screenId);
+        }
+
+        function removeOld() {
+            const screens = getScreens();
+            screens.forEach(([key, screen]) => {
+                if (Date.now() - screen.updated > 1000) {
+                    localStorage.removeItem(key);
+                }
+            });
+        }
+
+        function makeSVG() {
+            const screenPath = new SVGModifier();
+            svg.setAttribute('viewBox', `0 0 ${window.screen.availWidth} ${window.screen.availHeight}`);
+            svg.setAttribute('width', `${window.screen.availWidth}px`);
+            svg.setAttribute('height', `${window.screen.availHeight}px`);
+            svg.style.transform = `translate(-${window.screenX}px, -${window.screenY}px)`;
+            video.style.transform = `translate(-${window.screenX}px, -${window.screenY}px)`;
+
+            getScreens().forEach(([key, screen], i) => {
+                const x = screen.screenX + screen.width / 2;
+                const y = screen.screenY + screen.height / 2;
+                if (i === 0) {
+                    screenPath.moveTo(x, y);
+                } else {
+                    screenPath.lineTo(x, y);
+                }
+            });
+
+            screenPath.closePath();
+            path.setAttribute('d', screenPath.toString());
+        }
+
+        const timers = [];
+        function go() {
+            timers.push(setInterval(setScreenDetails, 10));
+            timers.push(setInterval(displayStats, 10));
+            timers.push(setInterval(removeOld, 100));
+            timers.push(setInterval(makeSVG, 10));
+        }
+
+        clear.addEventListener('click', restart);
+        window.addEventListener('beforeunload', removeScreen);
+
+        function populateWebcam() {
+            navigator.mediaDevices.getUserMedia({ video: true }).then((stream) => {
+                if (!video) return;
+                video.width = window.screen.availWidth;
+                video.height = window.screen.availHeight;
+                video.srcObject = stream;
+                video.play();
+            });
+        }
+
+        go();
+        populateWebcam();
+    </script>
+</body>
+
+</html>
